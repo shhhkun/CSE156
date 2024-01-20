@@ -6,6 +6,72 @@
 
 #define BUFFER_SIZE 4096
 #define OUTPUT_FILE "output.dat"
+#define DEFAULT_PORT "80"
+#define DEFAULT_PATH "/"
+
+void parse_server_address(const char *serv_addr, char **ip_address, char **port, char **path) {
+    // Initialize outputs to default values
+    *ip_address = strdup(serv_addr);
+    *port = strdup(DEFAULT_PORT);
+    *path = strdup(DEFAULT_PATH);
+
+    // check if ":" is present in the server address
+    char *temp = strdup(serv_addr);
+    char *ip_port = strtok(temp, ":");
+    if (ip_port != NULL) {
+        //printf("hi1: %s\n", ip_port);
+        free(*ip_address);
+        *ip_address = strdup(ip_port);
+
+        // check if ":" is present in the remaining part
+        char *temp_port = strtok(NULL, ":");
+        if (temp_port != NULL) {
+            free(*port);
+            *port = strdup(temp_port);
+
+            // check if "/" is present in the remaining part
+            char *temp_path = strchr(*port, '/');
+            if (temp_path != NULL) {
+                free(*path);
+                *path = strdup(temp_path);
+
+                // remove the path part from the port
+                *temp_path = '\0';
+            }
+        }
+    } else {
+        // No ":" present, treat the whole address as IP and check for path
+        char *temp_path = strchr(*ip_address, '/');
+        //printf("hi2\n");
+        if (temp_path != NULL) {
+            free(*path);
+            *path = strdup(temp_path);
+
+            // remove the path part from the IP address
+            *temp_path = '\0';
+        }
+    }
+
+    // remove trailing '/' from IP address
+    size_t len_ip = strlen(*ip_address);
+    if (len_ip > 0 && (*ip_address)[len_ip - 1] == '/') {
+        //printf("hi3\n");
+        (*ip_address)[len_ip - 1] = '\0';
+    }
+
+    // Check if there is a "/" in the ip_address and update path accordingly
+    char *temp_path_after_slash = strchr(*ip_address, '/');
+    if (temp_path_after_slash != NULL) {
+        free(*path);
+        *path = malloc(strlen(temp_path_after_slash) + 2);  // +2 for including the leading "/"
+        sprintf(*path, "/%s", temp_path_after_slash + 1);
+
+        // remove the path part from the IP address
+        *temp_path_after_slash = '\0';
+    }
+
+    free(temp);
+}
 
 void send_request(const char *hostname, const char *ip_address, const char *port, const char *path, int head_req) {
     int sockfd; // socket file descriptor
@@ -17,7 +83,7 @@ void send_request(const char *hostname, const char *ip_address, const char *port
     ssize_t bytes_read;
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) { // create socket
-        fprintf(stderr, "Socket creation failed");
+        fprintf(stderr, "Socket creation failed\n");
         exit(1);
     }
 
@@ -27,12 +93,12 @@ void send_request(const char *hostname, const char *ip_address, const char *port
     addr.sin_port = htons(atoi(port)); // Convert port to integer
 
     if (inet_pton(AF_INET, ip_address, &addr.sin_addr) <= 0) { // convert host (IPv4/IPv6) from text to binary
-        fprintf(stderr, "Invalid/Unsupported address");
+        fprintf(stderr, "Invalid/Unsupported address\n");
         exit(1);
     }
 
     if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) { // connect to server
-        fprintf(stderr, "Connection failed");
+        fprintf(stderr, "Connection failed\n");
         exit(1);
     }
 
@@ -44,7 +110,7 @@ void send_request(const char *hostname, const char *ip_address, const char *port
     }
 
     if (send(sockfd, request, strlen(request), 0) == -1) { // send HTTP request
-        fprintf(stderr, "Send failed");
+        fprintf(stderr, "Send failed\n");
         exit(1);
     }
 
@@ -98,31 +164,18 @@ int main(int argc, char *argv[]) {
     }
 
     // parse server address as IP, port, and path
-    char *ip_address;
-    char *port;
-    char *path;
+    char *ip_address, *port, *path;
+    parse_server_address(serv_addr, &ip_address, &port, &path);
 
-    //printf("%s\n", serv_addr);
-
-    char *temp = strdup(serv_addr);
-    // formatted as IP:port/path
-    ip_address = strtok(temp, ":"); // get IP
-    port = strtok(NULL, "/"); // get port
-    path = strtok(NULL, ""); // get path
-
-    // prepend '/' to path
-    size_t len = strlen("/");
-    memmove(path + len, path, strlen(path) + 1);
-    memcpy(path, "/", len);
-
-    /*
     printf("hostname: %s\n", hostname);
     printf("ip_address: %s\n", ip_address);
     printf("port: %s\n", port);
     printf("path: %s\n", path);
-    */
+
     send_request(hostname, ip_address, port, path, head_req);
-    free(temp); // free temp str
+    free(ip_address); // free dynamically allocated memory
+    free(port);
+    free(path);
 
     return 0;
 }
