@@ -23,7 +23,7 @@ $(BINDIR):
 
 clean:
 	rm -f *.o
-	rm -rf $(BINDIR)
+	rm -rf $(BINDIR)/*
 
 format:
 	clang-format -i -style=file $(SRCDIR)/*.[ch]
