@@ -19,30 +19,29 @@ void parse_server_address(const char *serv_addr, char **ip_address, char **port,
     char *temp = strdup(serv_addr);
     char *ip_port = strtok(temp, ":");
     if (ip_port != NULL) {
-        //printf("hi1: %s\n", ip_port);
         free(*ip_address);
         *ip_address = strdup(ip_port);
 
         // check if ":" is present in the remaining part
-        char *temp_port = strtok(NULL, ":");
-        if (temp_port != NULL) {
-            free(*port);
-            *port = strdup(temp_port);
-
+        char *temp_port_path = strtok(NULL, "");
+        if (temp_port_path != NULL) {
             // check if "/" is present in the remaining part
-            char *temp_path = strchr(*port, '/');
+            char *temp_path = strchr(temp_port_path, '/');
             if (temp_path != NULL) {
                 free(*path);
                 *path = strdup(temp_path);
 
-                // remove the path part from the port
+                // remove the path part from the remaining part
                 *temp_path = '\0';
             }
+
+            // assign the remaining part to port
+            free(*port);
+            *port = strdup(temp_port_path);
         }
     } else {
         // No ":" present, treat the whole address as IP and check for path
         char *temp_path = strchr(*ip_address, '/');
-        //printf("hi2\n");
         if (temp_path != NULL) {
             free(*path);
             *path = strdup(temp_path);
@@ -55,7 +54,6 @@ void parse_server_address(const char *serv_addr, char **ip_address, char **port,
     // remove trailing '/' from IP address
     size_t len_ip = strlen(*ip_address);
     if (len_ip > 0 && (*ip_address)[len_ip - 1] == '/') {
-        //printf("hi3\n");
         (*ip_address)[len_ip - 1] = '\0';
     }
 
@@ -72,6 +70,7 @@ void parse_server_address(const char *serv_addr, char **ip_address, char **port,
 
     free(temp);
 }
+
 
 void send_request(const char *hostname, const char *ip_address, const char *port, const char *path, int head_req) {
     int sockfd; // socket file descriptor
