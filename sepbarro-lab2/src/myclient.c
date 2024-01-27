@@ -15,10 +15,18 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
         exit(1);
     }
 
+    FILE *outfile = fopen(outfile_path, "wb");
+    if (!outfile) {
+        perror("Cannot open output file");
+        fclose(infile);
+        exit(1);
+    }
+
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd == -1) {
         perror("Socket creation failed");
         fclose(infile);
+        fclose(outfile);
         exit(1);
     }
 
@@ -39,6 +47,7 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
         if (sendto(sockfd, buffer, bytes_read, 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
             perror("sendto() failed");
             fclose(infile);
+            fclose(outfile);
             close(sockfd);
             exit(1);
         }
@@ -53,12 +62,16 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
             // Handle timeout (assume packet loss)
             fprintf(stderr, "Packet loss detected\n");
             fclose(infile);
+            fclose(outfile);
             close(sockfd);
             exit(1);
         }
+        
+        fwrite(buffer, 1, bytes_read, outfile);  // Write received bytes to output file
     }
 
     fclose(infile);
+    fclose(outfile);
     close(sockfd);
 }
 
