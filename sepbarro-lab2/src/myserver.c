@@ -10,15 +10,15 @@ void handle_client(int sockfd, struct sockaddr_in *client_addr, socklen_t addr_l
     char buffer[BUFFER_SIZE];
 
     while (1) {
-        // Receive packet from client
+        // receive packet from client
         ssize_t bytes_received = recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)client_addr, &addr_len);
         if (bytes_received == -1) {
-            perror("Receive failed");
+            fprintf(stderr, "Receive failed\n");
             continue;
         }
 
         if (bytes_received == 0) {
-            printf("Client disconnected\n");
+            fprintf(stderr, "Client disconnected\n");
             break;
         }
 
@@ -35,34 +35,33 @@ int main(int argc, char *argv[]) {
 
     int port = atoi(argv[1]);
 
-    // Create socket
+    printf("port = %d\n", port);
+
+    // create socket
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd == -1) {
-        perror("Socket creation failed");
+        fprintf(stderr, "Socket creation failed\n");
         exit(1);
     }
 
-    // Initialize server address structure
+    // initialize server address structure & bind socket
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(port);
-
-    // Bind socket
     if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-        perror("Bind failed");
+        fprintf(stderr, "Socket bind failed\n");
         close(sockfd);
         exit(1);
     }
 
     printf("Server listening on port %d\n", port);
 
-    // Receive and echo packets
+    // receive packet and echo back to client
     while (1) {
         struct sockaddr_in client_addr;
         socklen_t addr_len = sizeof(client_addr);
-
         handle_client(sockfd, &client_addr, addr_len);
     }
 

@@ -11,20 +11,20 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
 
     FILE *infile = fopen(infile_path, "rb");
     if (!infile) {
-        perror("Cannot open input file");
+        fprintf(stderr, "Error opening input file\n");
         exit(1);
     }
 
     FILE *outfile = fopen(outfile_path, "wb");
     if (!outfile) {
-        perror("Cannot open output file");
+        fprintf(stderr, "Error opening output file\n");
         fclose(infile);
         exit(1);
     }
 
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd == -1) {
-        perror("Socket creation failed");
+        fprintf(stderr, "Socket creation failed\n");
         fclose(infile);
         fclose(outfile);
         exit(1);
@@ -45,21 +45,21 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
 
         // send packet to server
         if (sendto(sockfd, buffer, bytes_read, 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-            perror("sendto() failed");
+            fprintf(stderr, "sento() failed\n");
             fclose(infile);
             fclose(outfile);
             close(sockfd);
             exit(1);
         }
 
-        // Wait for ACK
-        struct timeval timeout = {5, 0};  // 5 seconds timeout
+        // wait for ACK
+        struct timeval timeout = {5, 0};  // 5 sec timeout
         setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
 
         int ack_sequence_number;
         ssize_t bytes_received = recvfrom(sockfd, &ack_sequence_number, sizeof(ack_sequence_number), 0, NULL, NULL);
         if (bytes_received == -1) {
-            // Handle timeout (assume packet loss)
+            // handle timeout (assume packet loss)
             fprintf(stderr, "Packet loss detected\n");
             fclose(infile);
             fclose(outfile);
