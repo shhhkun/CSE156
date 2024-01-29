@@ -7,7 +7,7 @@
 #define BUFFER_SIZE 1024
 
 void send_file(const char *server_ip, int server_port, int mtu, const char *infile_path, const char *outfile_path) {
-    char buffer[BUFFER_SIZE];
+    char buffer[mtu];
 
     FILE *infile = fopen(infile_path, "rb");
     if (!infile) {
@@ -45,7 +45,7 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
 
         // send packet to server
         if (sendto(sockfd, buffer, bytes_read, 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-            fprintf(stderr, "sento() failed\n");
+            fprintf(stderr, "sendto() failed\n");
             fclose(infile);
             fclose(outfile);
             close(sockfd);
@@ -53,7 +53,7 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
         }
 
         // wait for ACK
-        struct timeval timeout = {5, 0};  // 5 sec timeout
+        struct timeval timeout = {10, 0};  // 10 sec timeout
         setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
 
         int ack_sequence_number;
@@ -67,7 +67,7 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
             exit(1);
         }
         
-        fwrite(buffer, 1, bytes_read, outfile);  // Write received bytes to output file
+        fwrite(buffer, 1, bytes_read, outfile);
     }
 
     fclose(infile);
