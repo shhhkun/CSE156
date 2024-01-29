@@ -4,24 +4,25 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#define BUFFER_SIZE 1024
-
 void send_file(const char *server_ip, int server_port, int mtu, const char *infile_path, const char *outfile_path) {
     char buffer[mtu];
 
+    // open infile in read bytes mode
     FILE *infile = fopen(infile_path, "rb");
-    if (!infile) {
+    if (infile == NULL) {
         fprintf(stderr, "Error opening input file\n");
         exit(1);
     }
 
+    // open outfile in write bytes mode
     FILE *outfile = fopen(outfile_path, "wb");
-    if (!outfile) {
+    if (outfile == NULL) {
         fprintf(stderr, "Error opening output file\n");
         fclose(infile);
         exit(1);
     }
 
+    // create socket file descriptor
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd == -1) {
         fprintf(stderr, "Socket creation failed\n");
@@ -40,7 +41,7 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
     while (1) {
         size_t bytes_read = fread(buffer, 1, mtu, infile); // read file in sizes of max MTU
         if (bytes_read == 0) {
-            break; // no more bytes; eof
+            break; // no more bytes/eof, exit infinite loop
         }
 
         // send packet to server
@@ -55,12 +56,11 @@ void send_file(const char *server_ip, int server_port, int mtu, const char *infi
         // wait for ACK
         struct timeval timeout = {10, 0};  // 10 sec timeout
         setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+        int ack_sn;
 
-        int ack_sequence_number;
-        ssize_t bytes_received = recvfrom(sockfd, &ack_sequence_number, sizeof(ack_sequence_number), 0, NULL, NULL);
+        ssize_t bytes_received = recvfrom(sockfd, &ack_sn, sizeof(ack_sn), 0, NULL, NULL);
         if (bytes_received == -1) {
-            // handle timeout (assume packet loss)
-            fprintf(stderr, "Packet loss detected\n");
+            fprintf(stderr, "Packet loss detected\n"); // handle timeout (assume packet loss)
             fclose(infile);
             fclose(outfile);
             close(sockfd);

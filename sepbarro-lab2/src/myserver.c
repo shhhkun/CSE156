@@ -4,7 +4,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 4096 // buffer size KiB
 
 void handle_client(int sockfd, struct sockaddr_in *client_addr, socklen_t addr_len) {
     char buffer[BUFFER_SIZE];
@@ -22,7 +22,7 @@ void handle_client(int sockfd, struct sockaddr_in *client_addr, socklen_t addr_l
             break;
         }
 
-        // Echo the received payload back to the client
+        // echo bytes back to client
         sendto(sockfd, buffer, bytes_received, 0, (struct sockaddr *)client_addr, addr_len);
     }
 }
@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    printf("Server listening on port %d\n", port);
+    printf("Server listening on port: %d\n", port);
 
     // receive packet and echo back to client
     while (1) {
