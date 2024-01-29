@@ -6,6 +6,20 @@
 
 #define BUFFER_SIZE 4096 // buffer size KiB
 
+void validport(int port) {
+  if (0 <= port && port <= 1023) {
+    fprintf(stderr, "Port number cannot be well-known: 0-1023\n");
+    exit(1);
+  } else if (port < 0) {
+    fprintf(stderr, "Port number cannot be negative\n");
+    exit(1);
+  } else if (port > 65535) {
+    fprintf(stderr, "Port number out of range, must be within: 1024-65535\n");
+    exit(1);
+  }
+  return;
+}
+
 void handle_client(int sockfd, struct sockaddr_in *client_addr,
                    socklen_t addr_len) {
   char buffer[BUFFER_SIZE];
@@ -38,6 +52,7 @@ int main(int argc, char *argv[]) {
   }
 
   int port = atoi(argv[1]);
+  validport(port);
 
   // create socket
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);

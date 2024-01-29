@@ -4,6 +4,20 @@
 #include <string.h>
 #include <unistd.h>
 
+void validport(int port) {
+  if (0 <= port && port <= 1023) {
+    fprintf(stderr, "Port number cannot be well-known: 0-1023\n");
+    exit(1);
+  } else if (port < 0) {
+    fprintf(stderr, "Port number cannot be negative\n");
+    exit(1);
+  } else if (port > 65535) {
+    fprintf(stderr, "Port number out of range, must be within: 1024-65535\n");
+    exit(1);
+  }
+  return;
+}
+
 void send_file(const char *server_ip, int server_port, int mtu,
                const char *infile_path, const char *outfile_path) {
   char buffer[mtu];
@@ -96,6 +110,12 @@ int main(int argc, char *argv[]) {
   int mtu = atoi(argv[3]);
   const char *infile_path = argv[4];
   const char *outfile_path = argv[5];
+
+  validport(server_port);
+  if (mtu < 1) {
+    fprintf(stderr, "MTU must at least be 1\n");
+    exit(1);
+  }
 
   // send file to server in packets
   send_file(server_ip, server_port, mtu, infile_path, outfile_path);
