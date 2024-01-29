@@ -39,8 +39,6 @@ int main(int argc, char *argv[]) {
 
   int port = atoi(argv[1]);
 
-  printf("port = %d\n", port);
-
   // create socket
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd == -1) {
