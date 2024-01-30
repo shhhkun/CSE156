@@ -25,14 +25,14 @@ void send_file(const char *server_ip, int server_port, int mtu,
   // open infile in read bytes mode
   FILE *infile = fopen(infile_path, "rb");
   if (infile == NULL) {
-    perror("Error opening input file");
+    fprintf(stderr, "Error opening input filepath\n");
     exit(1);
   }
 
   // open outfile in write bytes mode
   FILE *outfile = fopen(outfile_path, "wb");
   if (outfile == NULL) {
-    perror("Error opening output file");
+    fprintf(stderr, "Error opening output filepath\n");
     fclose(infile);
     exit(1);
   }
@@ -40,7 +40,7 @@ void send_file(const char *server_ip, int server_port, int mtu,
   // create socket file descriptor
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd == -1) {
-    perror("Socket creation failed");
+    fprintf(stderr, "Socket creation failed\n");
     fclose(infile);
     fclose(outfile);
     exit(1);
@@ -53,6 +53,14 @@ void send_file(const char *server_ip, int server_port, int mtu,
   server_addr.sin_addr.s_addr = inet_addr(server_ip);
   server_addr.sin_port = htons(server_port);
 
+  // Set timeout for receiving ACKs
+  struct timeval timeout = {10, 0}; // 10 sec timeout
+  setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
+             sizeof(timeout));
+
+  // Timestamp to track server response
+  time_t start_time = time(NULL);
+
   while (1) {
     size_t bytes_read =
         fread(buffer, 1, mtu, infile); // read file in sizes of max MTU
@@ -63,7 +71,7 @@ void send_file(const char *server_ip, int server_port, int mtu,
     // send packet to server
     if (sendto(sockfd, buffer, bytes_read, 0, (struct sockaddr *)&server_addr,
                sizeof(server_addr)) == -1) {
-      perror("sendto() failed");
+      fprintf(stderr, "sendto() failed\n");
       fclose(infile);
       fclose(outfile);
       close(sockfd);
@@ -71,21 +79,27 @@ void send_file(const char *server_ip, int server_port, int mtu,
     }
 
     // wait for ACK
-    struct timeval timeout = {10, 0}; // 10 sec timeout
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
-               sizeof(timeout));
     int ack_sn;
-
     ssize_t bytes_received =
         recvfrom(sockfd, &ack_sn, sizeof(ack_sn), 0, NULL, NULL);
     if (bytes_received == -1) {
       fprintf(stderr,
               "Packet loss detected\n"); // handle timeout (assume packet loss)
-      fclose(infile);
-      fclose(outfile);
-      close(sockfd);
-      exit(1);
+
+      // Check if server is down (60 seconds without any response)
+      time_t current_time = time(NULL);
+      if (current_time - start_time >= 60) {
+        fprintf(stderr, "Cannot detect server\n");
+        fclose(infile);
+        fclose(outfile);
+        close(sockfd);
+        exit(1);
+      }
+      continue;
     }
+
+    // Reset timestamp on successful server response
+    start_time = time(NULL);
 
     fwrite(buffer, 1, bytes_read, outfile);
   }

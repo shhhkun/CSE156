@@ -33,7 +33,6 @@ void handle_client(int sockfd, struct sockaddr_in *client_addr,
       fprintf(stderr, "Receive failed\n");
       continue;
     }
-
     if (bytes_received == 0) {
       fprintf(stderr, "Client disconnected\n");
       break;
