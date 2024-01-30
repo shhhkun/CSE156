@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 void validport(int port) {
@@ -83,8 +84,7 @@ void send_file(const char *server_ip, int server_port, int mtu,
     ssize_t bytes_received =
         recvfrom(sockfd, &ack_sn, sizeof(ack_sn), 0, NULL, NULL);
     if (bytes_received == -1) {
-      fprintf(stderr,
-              "Packet loss detected\n"); // handle timeout (assume packet loss)
+      fprintf(stderr, "Packet loss detected\n"); // assume packet loss
 
       // check if server is down (60 seconds without any response)
       time_t current_time = time(NULL);
