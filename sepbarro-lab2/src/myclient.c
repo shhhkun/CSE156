@@ -53,12 +53,12 @@ void send_file(const char *server_ip, int server_port, int mtu,
   server_addr.sin_addr.s_addr = inet_addr(server_ip);
   server_addr.sin_port = htons(server_port);
 
-  // Set timeout for receiving ACKs
+  // set timeout for receiving ACKs
   struct timeval timeout = {10, 0}; // 10 sec timeout
   setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
              sizeof(timeout));
 
-  // Timestamp to track server response
+  // timestamp to track server response
   time_t start_time = time(NULL);
 
   while (1) {
@@ -86,7 +86,7 @@ void send_file(const char *server_ip, int server_port, int mtu,
       fprintf(stderr,
               "Packet loss detected\n"); // handle timeout (assume packet loss)
 
-      // Check if server is down (60 seconds without any response)
+      // check if server is down (60 seconds without any response)
       time_t current_time = time(NULL);
       if (current_time - start_time >= 60) {
         fprintf(stderr, "Cannot detect server\n");
@@ -98,7 +98,7 @@ void send_file(const char *server_ip, int server_port, int mtu,
       continue;
     }
 
-    // Reset timestamp on successful server response
+    // reset timestamp on successful server response
     start_time = time(NULL);
 
     fwrite(buffer, 1, bytes_read, outfile);
