@@ -25,14 +25,14 @@ void send_file(const char *server_ip, int server_port, int mtu,
   // open infile in read bytes mode
   FILE *infile = fopen(infile_path, "rb");
   if (infile == NULL) {
-    fprintf(stderr, "Error opening input file\n");
+    perror("Error opening input file");
     exit(1);
   }
 
   // open outfile in write bytes mode
   FILE *outfile = fopen(outfile_path, "wb");
   if (outfile == NULL) {
-    fprintf(stderr, "Error opening output file\n");
+    perror("Error opening output file");
     fclose(infile);
     exit(1);
   }
@@ -40,7 +40,7 @@ void send_file(const char *server_ip, int server_port, int mtu,
   // create socket file descriptor
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd == -1) {
-    fprintf(stderr, "Socket creation failed\n");
+    perror("Socket creation failed");
     fclose(infile);
     fclose(outfile);
     exit(1);
@@ -63,7 +63,7 @@ void send_file(const char *server_ip, int server_port, int mtu,
     // send packet to server
     if (sendto(sockfd, buffer, bytes_read, 0, (struct sockaddr *)&server_addr,
                sizeof(server_addr)) == -1) {
-      fprintf(stderr, "sendto() failed\n");
+      perror("sendto() failed");
       fclose(infile);
       fclose(outfile);
       close(sockfd);
