@@ -59,7 +59,7 @@ void send_file(const char *server_ip, int server_port, int mtu,
   setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
              sizeof(timeout));
 
-  // timestamp to track server response
+  // track server response time
   time_t start_time = time(NULL);
 
   while (1) {
@@ -85,21 +85,22 @@ void send_file(const char *server_ip, int server_port, int mtu,
         recvfrom(sockfd, &ack_sn, sizeof(ack_sn), 0, NULL, NULL);
     if (bytes_received == -1) {
       fprintf(stderr, "Packet loss detected\n"); // assume packet loss
-
-      // check if server is down (60 seconds without any response)
-      time_t current_time = time(NULL);
-      if (current_time - start_time >= 60) {
-        fprintf(stderr, "Cannot detect server\n");
-        fclose(infile);
-        fclose(outfile);
-        close(sockfd);
-        exit(1);
-      }
-      continue;
+      fclose(infile);
+      fclose(outfile);
+      close(sockfd);
+      exit(1);
     }
 
-    // reset timestamp on successful server response
-    start_time = time(NULL);
+    // check if the server is down (60 sec timeout)
+    time_t current_time = time(NULL);
+    if (current_time - start_time >= 60) {
+      fprintf(stderr, "Cannot detect server\n");
+      fclose(infile);
+      fclose(outfile);
+      close(sockfd);
+      exit(1);
+    }
+    start_time = time(NULL); // reset start time on successful server echo
 
     fwrite(buffer, 1, bytes_read, outfile);
   }
