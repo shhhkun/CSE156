@@ -1,4 +1,3 @@
-// Include necessary libraries
 #include <arpa/inet.h>
 #include <errno.h>
 #include <stdio.h>
@@ -7,10 +6,8 @@
 #include <time.h>
 #include <unistd.h>
 
-// Define buffer size
 #define BUFFER_SIZE 1024
 
-// Function to get timestamp in RFC 3339 format
 char *get_timestamp() {
   time_t rawtime;
   struct tm *timeinfo;
@@ -23,18 +20,23 @@ char *get_timestamp() {
   return timestamp;
 }
 
-// Function to send file to server
+void log_packet(const char *type, int pktsn, size_t base, size_t nextsn,
+                int winsz) {
+  printf("%s, %s, %d, %zu, %zu, %zu\n", get_timestamp(), type, pktsn, base,
+         nextsn, base + winsz);
+}
+
 void send_file(const char *server_ip, int server_port, int mtu, int winsz,
                const char *infile_path, const char *outfile_path) {
   char buffer[BUFFER_SIZE];
-  FILE *infile = fopen(infile_path, "rb"); // Open input file in read mode
+  FILE *infile = fopen(infile_path, "rb");
 
   if (infile == NULL) {
     perror("Error opening input file");
     exit(EXIT_FAILURE);
   }
 
-  int sockfd = socket(AF_INET, SOCK_DGRAM, 0); // Create UDP socket
+  int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd == -1) {
     perror("Socket creation failed");
     fclose(infile);
@@ -47,7 +49,6 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
   server_addr.sin_addr.s_addr = inet_addr(server_ip);
   server_addr.sin_port = htons(server_port);
 
-  // Send outfile path to server as the first packet
   ssize_t bytes_sent =
       sendto(sockfd, outfile_path, strlen(outfile_path) + 1, 0,
              (struct sockaddr *)&server_addr, sizeof(server_addr));
@@ -63,14 +64,12 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
 
   while (1) {
     size_t i;
-    for (i = base; i < base + (size_t)winsz; i++) {
-      // Read data from infile
+    for (i = base; i < base + winsz; i++) {
       size_t bytes_read = fread(buffer, 1, mtu, infile);
       if (bytes_read == 0) {
-        break; // No more data to send
+        break;
       }
 
-      // Send packet to server
       ssize_t bytes_sent =
           sendto(sockfd, buffer, bytes_read, 0, (struct sockaddr *)&server_addr,
                  sizeof(server_addr));
@@ -81,18 +80,18 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
         exit(EXIT_FAILURE);
       }
 
-      // Log sequence number and window state
-      printf("%s, DATA, %zu, %zu, %zu, %zu\n", get_timestamp(), nextsn, base,
-             nextsn, base + (size_t)winsz);
-
+      log_packet("DATA", nextsn, base, nextsn, winsz);
       nextsn++;
     }
 
-    // Update base if all packets in the current window have been sent
     base = i;
 
-    // Receive acknowledgements and update base accordingly
-    for (size_t j = 0; j < (size_t)winsz; j++) {
+    if (feof(infile) && base == nextsn) {
+      break;
+    }
+
+    for (int j = 0; j < winsz; j++) {
+
       int ack_sn;
       ssize_t bytes_received = recv(sockfd, &ack_sn, sizeof(ack_sn), 0);
       if (bytes_received == -1) {
@@ -102,18 +101,11 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
         exit(EXIT_FAILURE);
       }
 
-      // Log acknowledgement numbers
-      printf("%s, ACK, %d, %zu, %zu, %zu\n", get_timestamp(), ack_sn, base,
-             nextsn, base + (size_t)winsz);
+      log_packet("ACK", ack_sn, base, nextsn, winsz);
 
       if (ack_sn == (int)base) {
         base++;
       }
-    }
-
-    // Check for end of file and window
-    if (feof(infile) && base == nextsn) {
-      break;
     }
   }
 
@@ -121,7 +113,6 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
   close(sockfd);
 }
 
-// Main function
 int main(int argc, char *argv[]) {
   if (argc != 7) {
     fprintf(stderr,
