@@ -6,7 +6,21 @@
 #include <time.h>
 #include <unistd.h>
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 4096
+
+void validport(int port) {
+  if (0 <= port && port <= 1023) {
+    fprintf(stderr, "Port number cannot be well-known: 0-1023\n");
+    exit(1);
+  } else if (port < 0) {
+    fprintf(stderr, "Port number cannot be negative\n");
+    exit(1);
+  } else if (port > 65535) {
+    fprintf(stderr, "Port number out of range, must be within: 1024-65535\n");
+    exit(1);
+  }
+  return;
+}
 
 char *get_timestamp() {
   time_t rawtime;
@@ -25,34 +39,32 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
                     int *pktsn) {
   char buffer[BUFFER_SIZE];
 
-  ssize_t bytes_received =
-      recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)client_addr,
-               &addr_len); // Receive packet
+  // receive packet from client
+  ssize_t bytes_received = recvfrom(sockfd, buffer, BUFFER_SIZE, 0,
+                                    (struct sockaddr *)client_addr, &addr_len);
   if (bytes_received == -1) {
-    perror("recvfrom() failed");
+    fprintf(stderr, "recvfrom() failed\n");
     return;
   }
 
-  // Log received packet
+  // log received packet
   printf("%s, DATA, %d\n", get_timestamp(), *pktsn);
 
-  // Debug message to print received data
-  printf("Received data: %s\n", buffer);
+  printf("Received data: %s\n", buffer); // debug message
 
-  // Process the first packet separately
+  // process first packet (contains outfile path)
   if (*pktsn == 0) {
-    // First packet contains the outfile path
     strncpy(outfile_path, buffer, bytes_received);
     printf("Output file path received: %s\n", outfile_path);
   } else {
-    // Simulate packet drop based on droppc for subsequent packets
+    // droppc is applied for subsequent packets
     srand(time(NULL));
     int chance = rand() % 100;
     int should_drop = (chance) < droppc;
-    printf("rand() %% 100 = %d\n", chance);
+    printf("rand() %% 100 = %d\n", chance); // debug message
 
+    // log dropped packet
     if (should_drop) {
-      // Log dropped packet
       if (buffer[0] == 'A') {
         printf("%s, DROP ACK, %d\n", get_timestamp(), *pktsn);
       } else {
@@ -61,66 +73,67 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
       return;
     }
 
-    // Write data to the outfile if it's not the outfile path
+    // write buffered data to outfile path (but not first packet)
     if (strcmp(buffer, outfile_path) != 0) {
-      FILE *outfile = fopen(outfile_path, "ab"); // "ab" append bytes mode
+      FILE *outfile = fopen(outfile_path, "ab"); // append bytes mode
       if (outfile == NULL) {
-        perror("Error opening output file");
+        fprintf(stderr, "Error opening output file\n");
         return;
       }
-
       fwrite(buffer, 1, bytes_received, outfile);
       fclose(outfile);
     }
   }
 
-  // Send ACK for the received packet
+  // send ACK to client for the received packet
   ssize_t bytes_sent = sendto(sockfd, pktsn, sizeof(*pktsn), 0,
                               (struct sockaddr *)client_addr, addr_len);
   if (bytes_sent == -1) {
-    perror("sendto() failed");
+    fprintf(stderr, "sendto() failed\n");
     return;
   }
 
-  // Log ACK packet
+  // log ACK packet
   printf("%s, ACK, %d\n", get_timestamp(), *pktsn);
 
-  // Increment packet sequence number
   (*pktsn)++;
 }
 
 void start_server(int port, int droppc) {
+  // create socket file descriptor
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd == -1) {
-    perror("Socket creation failed");
-    exit(EXIT_FAILURE);
+    fprintf(stderr, "Socket creation failed\n");
+    exit(1);
   }
 
+  // initialize server address structure
   struct sockaddr_in server_addr;
   memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(port);
 
+  // bind socket
   if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) ==
       -1) {
-    perror("Socket bind failed");
+    fprintf(stderr, "Socket bind failed\n");
     close(sockfd);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   printf("Server listening on port %d\n", port);
 
   struct sockaddr_in client_addr;
   socklen_t addr_len = sizeof(client_addr);
-
   char outfile_path[256] = "";
   int pktsn = 0;
 
+  // process incoming packets one at a time
   while (1) {
     process_packet(sockfd, &client_addr, addr_len, droppc, outfile_path,
                    &pktsn);
-    pktsn++;
+    pktsn++; // is this necessary?
   }
 
   close(sockfd);
@@ -129,23 +142,16 @@ void start_server(int port, int droppc) {
 int main(int argc, char *argv[]) {
   if (argc != 3) {
     fprintf(stderr, "Usage: %s <Port Number> <Drop Percentage>\n", argv[0]);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   int port = atoi(argv[1]);
   int droppc = atoi(argv[2]);
 
-  if (port <= 1023 || port > 65535) {
-    fprintf(stderr,
-            "Invalid port number. Port must be in the range 1024-65535.\n");
-    exit(EXIT_FAILURE);
-  }
-
+  validport(port);
   if (droppc < 0 || droppc > 100) {
-    fprintf(
-        stderr,
-        "Invalid drop percentage. Percentage must be in the range 0-100.\n");
-    exit(EXIT_FAILURE);
+    fprintf(stderr, "Drop percentage must be in the range: 0-100.\n");
+    exit(1);
   }
 
   srand(time(NULL));
