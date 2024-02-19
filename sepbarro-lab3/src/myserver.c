@@ -25,10 +25,12 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
                     socklen_t addr_len, int droppc, char *outfile_path,
                     int *pktsn) {
   char buffer[BUFFER_SIZE];
-  // char log_message[100];
 
   // Simulate packet drop based on droppc
-  int should_drop = (rand() % 100) < droppc;
+  srand(time(NULL));
+  int chance = rand() % 100;
+  int should_drop = (chance) < droppc;
+  printf("rand() %% 100 = %d\n", chance);
 
   ssize_t bytes_received =
       recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)client_addr,
@@ -52,7 +54,7 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
   }
 
   // Process received packet
-  if (outfile_path[0] == '\0') {
+  if (*pktsn == 0) {
     // First packet contains the outfile path
     strncpy(outfile_path, buffer, bytes_received);
     printf("Output file path received: %s\n", outfile_path);

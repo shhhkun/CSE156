@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -28,6 +29,12 @@ void log_packet(const char *type, int pktsn, size_t base, size_t nextsn,
 
 void send_file(const char *server_ip, int server_port, int mtu, int winsz,
                const char *infile_path, const char *outfile_path) {
+  // Truncate the output file to empty it
+  if (truncate(outfile_path, 0) == -1) {
+    perror("Error truncating output file");
+    exit(EXIT_FAILURE);
+  }
+
   char buffer[BUFFER_SIZE];
   FILE *infile = fopen(infile_path, "rb");
 
@@ -61,6 +68,9 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
 
   size_t base = 0;
   size_t nextsn = 0;
+
+  int retransmissions = 0;
+  int max_retransmissions = 5;
 
   while (1) {
     size_t i;
@@ -99,6 +109,24 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
         fclose(infile);
         close(sockfd);
         exit(EXIT_FAILURE);
+      }
+
+      if (ack_sn == -1) {
+        // Timeout occurred, packet loss detected
+        printf("Packet loss detected. Retransmitting packet %zu.\n", base);
+        retransmissions++;
+
+        // Check if max retransmission limit reached
+        if (retransmissions > max_retransmissions) {
+          fprintf(stderr, "Reached max re-transmission limit\n");
+          fclose(infile);
+          close(sockfd);
+          exit(EXIT_FAILURE);
+        }
+
+        // Retransmit the packet
+        fseek(infile, base, SEEK_SET);
+        break;
       }
 
       log_packet("ACK", ack_sn, base, nextsn, winsz);
