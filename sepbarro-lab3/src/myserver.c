@@ -20,17 +20,10 @@ char *get_timestamp() {
   return timestamp;
 }
 
-// Function to process received packets
 void process_packet(int sockfd, struct sockaddr_in *client_addr,
                     socklen_t addr_len, int droppc, char *outfile_path,
                     int *pktsn) {
   char buffer[BUFFER_SIZE];
-
-  // Simulate packet drop based on droppc
-  srand(time(NULL));
-  int chance = rand() % 100;
-  int should_drop = (chance) < droppc;
-  printf("rand() %% 100 = %d\n", chance);
 
   ssize_t bytes_received =
       recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)client_addr,
@@ -43,35 +36,40 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
   // Log received packet
   printf("%s, DATA, %d\n", get_timestamp(), *pktsn);
 
-  if (should_drop) {
-    // Log dropped packet
-    if (buffer[0] == 'A') {
-      printf("%s, DROP ACK, %d\n", get_timestamp(), *pktsn);
-    } else {
-      printf("%s, DROP DATA, %d\n", get_timestamp(), *pktsn);
-    }
-    return;
-  }
+  // Debug message to print received data
+  printf("Received data: %s\n", buffer);
 
-  // Process received packet
+  // Process the first packet separately
   if (*pktsn == 0) {
     // First packet contains the outfile path
     strncpy(outfile_path, buffer, bytes_received);
     printf("Output file path received: %s\n", outfile_path);
   } else {
+    // Simulate packet drop based on droppc for subsequent packets
+    srand(time(NULL));
+    int chance = rand() % 100;
+    int should_drop = (chance) < droppc;
+    printf("rand() %% 100 = %d\n", chance);
+
+    if (should_drop) {
+      // Log dropped packet
+      if (buffer[0] == 'A') {
+        printf("%s, DROP ACK, %d\n", get_timestamp(), *pktsn);
+      } else {
+        printf("%s, DROP DATA, %d\n", get_timestamp(), *pktsn);
+      }
+      return;
+    }
+
+    // Write data to the outfile if it's not the outfile path
     if (strcmp(buffer, outfile_path) != 0) {
-      // Subsequent packets contain file data, write only if it's not the
-      // outfile path
       FILE *outfile = fopen(outfile_path, "ab"); // "ab" append bytes mode
       if (outfile == NULL) {
         perror("Error opening output file");
         return;
       }
 
-      // Check if it's not the first packet
-      if (*pktsn > 0) {
-        fwrite(buffer, 1, bytes_received, outfile);
-      }
+      fwrite(buffer, 1, bytes_received, outfile);
       fclose(outfile);
     }
   }

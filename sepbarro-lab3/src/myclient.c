@@ -4,9 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h> // for timeval structure
 #include <time.h>
 #include <unistd.h>
 
+#define RECV_TIMEOUT_SECONDS 5
+#define MAX_RETRANSMISSIONS 5
+#define RETRANSMISSION_TIMEOUT_SECONDS 5
 #define BUFFER_SIZE 1024
 
 char *get_timestamp() {
@@ -29,17 +33,18 @@ void log_packet(const char *type, int pktsn, size_t base, size_t nextsn,
 
 void send_file(const char *server_ip, int server_port, int mtu, int winsz,
                const char *infile_path, const char *outfile_path) {
-  // Truncate the output file to empty it
-  if (truncate(outfile_path, 0) == -1) {
-    perror("Error truncating output file");
-    exit(EXIT_FAILURE);
-  }
-
   char buffer[BUFFER_SIZE];
   FILE *infile = fopen(infile_path, "rb");
 
   if (infile == NULL) {
     perror("Error opening input file");
+    exit(EXIT_FAILURE);
+  }
+
+  // Truncate the output file to empty it
+  if (truncate(outfile_path, 0) == -1) {
+    perror("Error truncating output file");
+    fclose(infile);
     exit(EXIT_FAILURE);
   }
 
@@ -66,11 +71,12 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
     exit(EXIT_FAILURE);
   }
 
+  printf("Sent outfile_path: %s\n", outfile_path); // Debug message
+
   size_t base = 0;
   size_t nextsn = 0;
 
   int retransmissions = 0;
-  int max_retransmissions = 5;
 
   while (1) {
     size_t i;
@@ -90,50 +96,60 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
         exit(EXIT_FAILURE);
       }
 
-      log_packet("DATA", nextsn, base, nextsn, winsz);
+      printf("%s, Sent DATA packet %zu\n", get_timestamp(),
+             nextsn); // Debug message
       nextsn++;
-    }
 
-    base = i;
+      // Wait for ACK
+      struct timeval timeout;
+      timeout.tv_sec = RETRANSMISSION_TIMEOUT_SECONDS;
+      timeout.tv_usec = 0;
 
-    if (feof(infile) && base == nextsn) {
-      break;
-    }
+      fd_set readfds;
+      FD_ZERO(&readfds);
+      FD_SET(sockfd, &readfds);
 
-    for (int j = 0; j < winsz; j++) {
-
-      int ack_sn;
-      ssize_t bytes_received = recv(sockfd, &ack_sn, sizeof(ack_sn), 0);
-      if (bytes_received == -1) {
-        perror("recv() failed");
+      int select_result = select(sockfd + 1, &readfds, NULL, NULL, &timeout);
+      if (select_result == -1) {
+        perror("select() failed");
         fclose(infile);
         close(sockfd);
         exit(EXIT_FAILURE);
-      }
-
-      if (ack_sn == -1) {
-        // Timeout occurred, packet loss detected
-        printf("Packet loss detected. Retransmitting packet %zu.\n", base);
+      } else if (select_result == 0) {
+        // Timeout occurred
+        printf("%s, Packet loss detected.\n", get_timestamp());
+        fseek(infile, i, SEEK_SET);
         retransmissions++;
-
-        // Check if max retransmission limit reached
-        if (retransmissions > max_retransmissions) {
-          fprintf(stderr, "Reached max re-transmission limit\n");
+      } else {
+        // ACK received, check if it corresponds to the sent packet
+        int ack_sn;
+        ssize_t bytes_received = recv(sockfd, &ack_sn, sizeof(ack_sn), 0);
+        if (bytes_received == -1) {
+          perror("recv() failed");
           fclose(infile);
           close(sockfd);
           exit(EXIT_FAILURE);
         }
 
-        // Retransmit the packet
-        fseek(infile, base, SEEK_SET);
-        break;
+        printf("%s, Received ACK: %d\n", get_timestamp(),
+               ack_sn); // Debug message
+
+        if (ack_sn == (int)i) {
+          // ACK received for the current packet, update base
+          base++;
+        }
       }
 
-      log_packet("ACK", ack_sn, base, nextsn, winsz);
-
-      if (ack_sn == (int)base) {
-        base++;
+      if (retransmissions >= MAX_RETRANSMISSIONS) {
+        fprintf(stderr, "Reached max re-transmission limit\n");
+        fclose(infile);
+        close(sockfd);
+        exit(EXIT_FAILURE);
       }
+    }
+
+    if (feof(infile)) { // base == nextsn
+      break;
     }
   }
 
