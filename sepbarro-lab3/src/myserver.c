@@ -49,19 +49,18 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
 
   // log received packet
   printf("%s, DATA, %d\n", get_timestamp(), *pktsn);
-
-  printf("Received data: %s\n", buffer); // debug message
+  // printf("Received data: %s\n", buffer); // debug message
 
   // process first packet (contains outfile path)
   if (*pktsn == 0) {
     strncpy(outfile_path, buffer, bytes_received);
-    printf("Output file path received: %s\n", outfile_path);
+    // printf("Output file path received: %s\n", outfile_path); // debug message
   } else {
     // droppc is applied for subsequent packets
     srand(time(NULL));
     int chance = rand() % 100;
     int should_drop = (chance) < droppc;
-    printf("rand() %% 100 = %d\n", chance); // debug message
+    // printf("rand() %% 100 = %d\n", chance); // debug message
 
     // log dropped packet
     if (should_drop) {
@@ -122,7 +121,7 @@ void start_server(int port, int droppc) {
     exit(1);
   }
 
-  printf("Server listening on port %d\n", port);
+  printf("Server listening on port: %d\n", port);
 
   struct sockaddr_in client_addr;
   socklen_t addr_len = sizeof(client_addr);
@@ -133,7 +132,7 @@ void start_server(int port, int droppc) {
   while (1) {
     process_packet(sockfd, &client_addr, addr_len, droppc, outfile_path,
                    &pktsn);
-    pktsn++; // is this necessary?
+    // pktsn++;
   }
 
   close(sockfd);

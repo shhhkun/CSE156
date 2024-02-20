@@ -89,7 +89,7 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
     exit(1);
   }
 
-  printf("Sent outfile_path: %s\n", outfile_path); // debug message
+  // printf("Sent outfile_path: %s\n", outfile_path); // debug message
 
   size_t base = 0;
   size_t nextsn = 0;
@@ -114,8 +114,10 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
         exit(1);
       }
 
-      printf("%s, Sent DATA packet %zu\n", get_timestamp(),
-             nextsn); // Debug message
+      // printf("%s, Sent DATA packet %zu\n", get_timestamp(), nextsn); // debug
+      // message
+      log_packet("DATA", nextsn, base, nextsn, winsz); // log DATA packet
+
       nextsn++;
 
       // wait for ACK
@@ -148,8 +150,9 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
           exit(1);
         }
 
-        printf("%s, Received ACK: %d\n", get_timestamp(),
-               ack_sn); // debug message
+        // printf("%s, Received ACK: %d\n", get_timestamp(), ack_sn); // debug
+        // message
+        log_packet("ACK", ack_sn, base, nextsn, winsz); // log ACK packet
 
         if (ack_sn == (int)i) { // ACK matches current packet
           base++;
