@@ -8,9 +8,9 @@
 #include <time.h>
 #include <unistd.h>
 
-#define RECV_TIMEOUT_SECONDS 5
+#define RECV_TIMEOUT_SECONDS 10
 #define MAX_RETRANSMISSIONS 5
-#define RETRANSMISSION_TIMEOUT_SECONDS 5
+#define RETRANSMISSION_TIMEOUT_SECONDS 10
 #define BUFFER_SIZE 1024
 
 void validport(int port) {
@@ -27,11 +27,10 @@ void validport(int port) {
   return;
 }
 
-char *get_timestamp() {
+char *timestamp() {
   time_t rawtime;
   struct tm *timeinfo;
   static char timestamp[30];
-
   time(&rawtime);
   timeinfo = localtime(&rawtime);
   strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", timeinfo);
@@ -41,8 +40,8 @@ char *get_timestamp() {
 
 void log_packet(const char *type, int pktsn, size_t base, size_t nextsn,
                 int winsz) {
-  printf("%s, %s, %d, %zu, %zu, %zu\n", get_timestamp(), type, pktsn, base,
-         nextsn, base + winsz);
+  printf("%s, %s, %d, %zu, %zu, %zu\n", timestamp(), type, pktsn, base, nextsn,
+         base + winsz);
 }
 
 void send_file(const char *server_ip, int server_port, int mtu, int winsz,
@@ -89,7 +88,7 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
     exit(1);
   }
 
-  printf("Sent outfile_path: %s\n", outfile_path); // debug message
+  // printf("Sent outfile_path: %s\n", outfile_path); // debug message
 
   size_t base = 0;
   size_t nextsn = 0;
@@ -114,15 +113,16 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
         exit(1);
       }
 
-      printf("%s, Sent DATA packet %zu\n", get_timestamp(),
-             nextsn); // Debug message
+      // printf("%s, Sent DATA packet %zu\n", timestamp(), nextsn); // debug
+      // message
+      log_packet("DATA", nextsn, base, nextsn, winsz); // log DATA packet
+
       nextsn++;
 
       // wait for ACK
       struct timeval timeout;
       timeout.tv_sec = RETRANSMISSION_TIMEOUT_SECONDS;
       timeout.tv_usec = 0;
-
       fd_set readfds;
       FD_ZERO(&readfds);        // clear set of file descriptors
       FD_SET(sockfd, &readfds); // add sockfd to file descriptor set
@@ -134,7 +134,7 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
         close(sockfd);
         exit(1);
       } else if (select_result == 0) { // timeout occurred
-        fprintf(stderr, "%s, Packet loss detected.\n", get_timestamp());
+        fprintf(stderr, "%s, Packet loss detected.\n", timestamp());
         fseek(infile, i,
               SEEK_SET); // move pointer back to retransmit packet content
         retransmissions++;
@@ -148,8 +148,9 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
           exit(1);
         }
 
-        printf("%s, Received ACK: %d\n", get_timestamp(),
-               ack_sn); // debug message
+        // printf("%s, Received ACK: %d\n", timestamp(), ack_sn); // debug
+        // message
+        log_packet("ACK", ack_sn, base, nextsn, winsz); // log ACK packet
 
         if (ack_sn == (int)i) { // ACK matches current packet
           base++;
@@ -164,13 +165,15 @@ void send_file(const char *server_ip, int server_port, int mtu, int winsz,
       }
     }
 
-    if (feof(infile)) { // base == nextsn
+    if (feof(infile)) {
       break;
     }
   }
 
   fclose(infile);
   close(sockfd);
+
+  return;
 }
 
 int main(int argc, char *argv[]) {
@@ -195,7 +198,7 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
   if (winsz < 1) {
-    fprintf(stderr, "Window size must be at least 1");
+    fprintf(stderr, "Window size must be at least 1\n");
     exit(1);
   }
 
