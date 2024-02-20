@@ -6,7 +6,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 4096 // KiB
 
 void validport(int port) {
   if (0 <= port && port <= 1023) {
@@ -22,11 +22,10 @@ void validport(int port) {
   return;
 }
 
-char *get_timestamp() {
+char *timestamp() {
   time_t rawtime;
   struct tm *timeinfo;
   static char timestamp[30];
-
   time(&rawtime);
   timeinfo = localtime(&rawtime);
   strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", timeinfo);
@@ -48,7 +47,7 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
   }
 
   // log received packet
-  printf("%s, DATA, %d\n", get_timestamp(), *pktsn);
+  printf("%s, DATA, %d\n", timestamp(), *pktsn);
   // printf("Received data: %s\n", buffer); // debug message
 
   // process first packet (contains outfile path)
@@ -65,9 +64,9 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
     // log dropped packet
     if (should_drop) {
       if (buffer[0] == 'A') {
-        printf("%s, DROP ACK, %d\n", get_timestamp(), *pktsn);
+        printf("%s, DROP ACK, %d\n", timestamp(), *pktsn);
       } else {
-        printf("%s, DROP DATA, %d\n", get_timestamp(), *pktsn);
+        printf("%s, DROP DATA, %d\n", timestamp(), *pktsn);
       }
       return;
     }
@@ -93,7 +92,7 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
   }
 
   // log ACK packet
-  printf("%s, ACK, %d\n", get_timestamp(), *pktsn);
+  printf("%s, ACK, %d\n", timestamp(), *pktsn);
 
   (*pktsn)++;
 }
@@ -132,7 +131,6 @@ void start_server(int port, int droppc) {
   while (1) {
     process_packet(sockfd, &client_addr, addr_len, droppc, outfile_path,
                    &pktsn);
-    // pktsn++;
   }
 
   close(sockfd);
