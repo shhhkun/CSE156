@@ -10,13 +10,14 @@ OBJECTS_SERVER = $(SOURCES_SERVER:$(SRCDIR)/%.c=$(BINDIR)/%.o)
 
 CC = clang
 CFLAGS = -Wall -Wpedantic -Werror -Wextra
+LDFLAGS = -pthread
 
 .PHONY: all clean format
 
 all: $(EXECBIN_CLIENT) $(EXECBIN_SERVER)
 
 $(EXECBIN_CLIENT): $(OBJECTS_CLIENT)
-	$(CC) -o $@ $^
+	$(CC) -o $@ $^ $(LDFLAGS)
 
 $(EXECBIN_SERVER): $(OBJECTS_SERVER)
 	$(CC) -o $@ $^
