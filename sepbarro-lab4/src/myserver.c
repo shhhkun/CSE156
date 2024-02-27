@@ -8,6 +8,7 @@
 
 #define BUFFER_SIZE 4096 // KiB
 
+char *outfile_name;
 char *outfile_path; // Declared globally for access across functions
 int *pktsn;         // Declared globally for access across functions
 
@@ -49,11 +50,15 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
   }
 
   // log received packet
-  printf("%s, DATA, %d\n", timestamp(), *pktsn);
+  printf("%s, %d, %s, %d, DATA, %d\n", timestamp(),
+         ntohs(client_addr->sin_port), inet_ntoa(client_addr->sin_addr),
+         ntohs(client_addr->sin_port), *pktsn);
 
   // process first packet (contains outfile path)
   if (*pktsn == 0) {
+    strncpy(outfile_name, buffer, bytes_received);
     snprintf(outfile_path, BUFFER_SIZE, "%s/%s", root_folder, buffer);
+    // printf("Outfile name: %s\n", outfile_name); // debug message
     // printf("Output file path received: %s\n", outfile_path); // debug message
   } else {
     // droppc is applied for subsequent packets
@@ -65,15 +70,21 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
     // log dropped packet
     if (should_drop) {
       if (buffer[0] == 'A') {
-        printf("%s, DROP ACK, %d\n", timestamp(), *pktsn);
+        printf("%s, %d, %s, %d, DROP ACK, %d\n", timestamp(),
+               ntohs(client_addr->sin_port), inet_ntoa(client_addr->sin_addr),
+               ntohs(client_addr->sin_port), *pktsn);
       } else {
-        printf("%s, DROP DATA, %d\n", timestamp(), *pktsn);
+        printf("%s, %d, %s, %d, DROP DATA, %d\n", timestamp(),
+               ntohs(client_addr->sin_port), inet_ntoa(client_addr->sin_addr),
+               ntohs(client_addr->sin_port), *pktsn);
       }
       return;
     }
 
     // write buffered data to outfile path (but not first packet)
-    if (strcmp(buffer, outfile_path) != 0) {
+    if (strcmp(buffer, outfile_name) != 0) {
+      // printf("buffer: %s\n", buffer); // debug message
+      // printf("outfile path: %s\n", outfile_path); // debug message
       FILE *outfile = fopen(outfile_path, "ab"); // append bytes mode
       if (outfile == NULL) {
         fprintf(stderr, "Error opening output file\n");
@@ -93,7 +104,9 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
   }
 
   // log ACK packet
-  printf("%s, ACK, %d\n", timestamp(), *pktsn);
+  printf("%s, %d, %s, %d, ACK, %d\n", timestamp(), ntohs(client_addr->sin_port),
+         inet_ntoa(client_addr->sin_addr), ntohs(client_addr->sin_port),
+         *pktsn);
 
   (*pktsn)++;
 }
@@ -156,6 +169,7 @@ int main(int argc, char *argv[]) {
 
   // Allocate memory for global variables
   outfile_path = malloc(BUFFER_SIZE);
+  outfile_name = malloc(BUFFER_SIZE);
   pktsn = malloc(sizeof(int));
   *pktsn = 0;
 
@@ -163,6 +177,7 @@ int main(int argc, char *argv[]) {
 
   // Free memory for global variables
   free(outfile_path);
+  free(outfile_name);
   free(pktsn);
 
   return 0;
