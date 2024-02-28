@@ -14,6 +14,7 @@
 #define RETRANSMISSION_TIMEOUT_SECONDS 10
 #define BUFFER_SIZE 1024
 
+// server configuration arguments
 typedef struct {
   char *server_ip;
   int server_port;
@@ -21,8 +22,9 @@ typedef struct {
   int winsz;
   char *infile_path;
   char *outfile_path;
-} ClientConfig;
+} servconf;
 
+// sender thread arguments
 typedef struct {
   int sockfd;
   struct sockaddr_in server_addr;
@@ -32,7 +34,23 @@ typedef struct {
   int mtu;
   int winsz;
   int *pktsn;
-} SenderThreadArgs;
+} sender_args;
+
+void validport(int port) {
+  if (0 <= port && port <= 1023) {
+    fprintf(stderr, "Port number (%d) cannot be well-known: 0-1023\n", port);
+    exit(1);
+  } else if (port < 0) {
+    fprintf(stderr, "Port number (%d) is negative\n", port);
+    exit(1);
+  } else if (port > 65535) {
+    fprintf(stderr,
+            "Port number (%d) out of range, must be within: 1024-65535\n",
+            port);
+    exit(1);
+  }
+  return;
+}
 
 char *timestamp() {
   time_t rawtime;
@@ -45,41 +63,30 @@ char *timestamp() {
   return timestamp;
 }
 
-int file_exists(const char *filename) {
-  FILE *file;
-  if ((file = fopen(filename, "r"))) {
-    printf("file: %s exists\n", filename);
-    fclose(file);
-    return 1;
-  }
-  return 0;
-}
-
 void *sender_thread(void *arg) {
-  SenderThreadArgs *args = (SenderThreadArgs *)arg;
-
+  sender_args *args = (sender_args *)arg;
   size_t base = 0;
   size_t nextsn = 0;
 
-  // Get local port
+  // get local port
   socklen_t len = sizeof(args->client_addr);
   if (getsockname(args->sockfd, (struct sockaddr *)&(args->client_addr),
                   &len) == -1) {
-    perror("getsockname failed");
+    fprintf(stderr, "getsockname() failed\n");
     close(args->sockfd);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
   int lport = ntohs(args->client_addr.sin_port);
 
-  char rip[INET_ADDRSTRLEN]; // Declare rip outside of the while loop
-  int rport;                 // Declare rport outside of the while loop
+  char rip[INET_ADDRSTRLEN];
+  int rport;
 
-  // Send the outfile path as the first packet
+  // send outfile path as the first packet
   ssize_t bytes_sent = sendto(
       args->sockfd, args->outfile_path, strlen(args->outfile_path) + 1, 0,
       (struct sockaddr *)&(args->server_addr), sizeof(args->server_addr));
   if (bytes_sent == -1) {
-    fprintf(stderr, "sendto() failed for sending outfile path\n");
+    fprintf(stderr, "sendto() failed for outfile path\n");
     fclose(args->infile);
     close(args->sockfd);
     exit(1);
@@ -103,9 +110,9 @@ void *sender_thread(void *arg) {
         exit(1);
       }
 
-      // Get remote IP and port
+      // get remote IP and port
       inet_ntop(AF_INET, &(args->server_addr.sin_addr), rip, INET_ADDRSTRLEN);
-      rport = ntohs(args->server_addr.sin_port); // Assign rport inside the loop
+      rport = ntohs(args->server_addr.sin_port);
 
       printf("%s, %d, %s, %d, DATA, %d, %zu, %zu, %zu\n", timestamp(), lport,
              rip, rport, *args->pktsn, base, nextsn, base + args->winsz);
@@ -113,7 +120,7 @@ void *sender_thread(void *arg) {
       nextsn++;
     }
 
-    // Simulate ACK packet reception
+    // send ACK
     char ack_packet[10] = "ACK";
     ssize_t bytes_sent = sendto(args->sockfd, ack_packet, strlen(ack_packet), 0,
                                 (struct sockaddr *)&(args->server_addr),
@@ -125,7 +132,7 @@ void *sender_thread(void *arg) {
       exit(1);
     }
 
-    // Log ACK packet
+    // log ACK packet
     printf("%s, %d, %s, %d, ACK, %d, %zu, %zu, %zu\n", timestamp(), lport, rip,
            rport, *args->pktsn, base, nextsn, base + args->winsz);
   }
@@ -137,21 +144,11 @@ void *sender_thread(void *arg) {
   return NULL;
 }
 
-void send_file(ClientConfig *config) {
+void send_file(servconf *config) {
   FILE *infile = fopen(config->infile_path, "rb");
   if (infile == NULL) {
     fprintf(stderr, "Error opening input file\n");
     exit(1);
-  }
-
-  // truncate outfile before server appends to it
-  if (file_exists(config->outfile_path)) {
-    if (truncate(config->outfile_path, 0) == -1) {
-      printf("output file: %s\n", config->outfile_path);
-      fprintf(stderr, "Error truncating output file\n");
-      fclose(infile);
-      exit(1);
-    }
   }
 
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -161,13 +158,15 @@ void send_file(ClientConfig *config) {
     exit(1);
   }
 
+  // initialize server address structure
   struct sockaddr_in server_addr;
   memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = inet_addr(config->server_ip);
   server_addr.sin_port = htons(config->server_port);
 
-  SenderThreadArgs *thread_args = malloc(sizeof(SenderThreadArgs));
+  // set thread args
+  sender_args *thread_args = malloc(sizeof(sender_args));
   thread_args->sockfd = sockfd;
   thread_args->server_addr = server_addr;
   thread_args->outfile_path = config->outfile_path;
@@ -188,13 +187,13 @@ void send_file(ClientConfig *config) {
   pthread_join(thread, NULL);
 }
 
-void start_client(ClientConfig *config, int num_servers) {
+void start_client(servconf *config, int num_servers) {
   pthread_t *threads = malloc(num_servers * sizeof(pthread_t));
 
   for (int i = 0; i < num_servers; i++) {
     if (pthread_create(&(threads[i]), NULL, (void *(*)(void *))send_file,
                        &(config[i])) != 0) {
-      fprintf(stderr, "Error creating thread for server %d\n", i);
+      fprintf(stderr, "Cannot create thread for server: %d\n", i);
       exit(1);
     }
   }
@@ -222,28 +221,40 @@ int main(int argc, char *argv[]) {
   char *infile_path = argv[5];
   char *outfile_path = argv[6];
 
+  if (num_servers < 1) {
+    fprintf(stderr,
+            "Number of servers to replicate infile to must be at least 1\n");
+    exit(1);
+  }
+  if (mtu < 1) {
+    fprintf(stderr, "MTU must be at least 1\n");
+    exit(1);
+  }
+  if (winsz < 1) {
+    fprintf(stderr, "Window size must be at least 1\n");
+    exit(1);
+  }
+
   FILE *server_config = fopen(server_config_file, "r");
   if (server_config == NULL) {
     fprintf(stderr, "Error opening server configuration file\n");
     exit(1);
   }
-
-  ClientConfig *config = malloc(num_servers * sizeof(ClientConfig));
+  servconf *config = malloc(num_servers * sizeof(servconf));
 
   for (int i = 0; i < num_servers; i++) {
     config[i].server_ip = malloc(16 * sizeof(char));
     fscanf(server_config, "%s %d", config[i].server_ip,
            &(config[i].server_port));
+    validport(config[i].server_port); // check each port
     config[i].mtu = mtu;
     config[i].winsz = winsz;
     config[i].infile_path = infile_path;
     config[i].outfile_path = outfile_path;
   }
-
   fclose(server_config);
 
-  start_client(config,
-               num_servers); // Pass num_servers to the start_client function
+  start_client(config, num_servers);
 
   free(config);
 

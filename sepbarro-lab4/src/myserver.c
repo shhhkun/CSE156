@@ -3,14 +3,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
 #define BUFFER_SIZE 4096 // KiB
 
+// global vars
 char *outfile_name;
-char *outfile_path; // Declared globally for access across functions
-int *pktsn;         // Declared globally for access across functions
+char *outfile_path;
+int *pktsn;
 
 void validport(int port) {
   if (0 <= port && port <= 1023) {
@@ -24,6 +26,16 @@ void validport(int port) {
     exit(1);
   }
   return;
+}
+
+int file_exists(const char *filename) {
+  FILE *file;
+  if ((file = fopen(filename, "r"))) {
+    // printf("file: %s exists\n", filename); // debug message
+    fclose(file);
+    return 1;
+  }
+  return 0;
 }
 
 char *timestamp() {
@@ -81,8 +93,17 @@ void process_packet(int sockfd, struct sockaddr_in *client_addr,
       return;
     }
 
+    // truncate outfile before server appends to it
+    if (strcmp(buffer, outfile_name) == 0 && file_exists(outfile_path)) {
+      // printf("output file: %s\n", outfile_path); // debug message
+      if (truncate(outfile_path, 0) == -1) {
+        fprintf(stderr, "Error truncating output file\n");
+        exit(1);
+      }
+    }
+
     // write buffered data to outfile path (but not first packet)
-    if (strcmp(buffer, outfile_name) != 0) {
+    if (strcmp(buffer, outfile_name) != 0 && strstr(buffer, "ACK") == NULL) {
       // printf("buffer: %s\n", buffer); // debug message
       // printf("outfile path: %s\n", outfile_path); // debug message
       FILE *outfile = fopen(outfile_path, "ab"); // append bytes mode
@@ -165,9 +186,10 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  srand(time(NULL));
+  mkdir(root_folder, 0777); // make root directory
+  srand(time(NULL));        // set random seed
 
-  // Allocate memory for global variables
+  // allocate memory for global vars
   outfile_path = malloc(BUFFER_SIZE);
   outfile_name = malloc(BUFFER_SIZE);
   pktsn = malloc(sizeof(int));
@@ -175,7 +197,7 @@ int main(int argc, char *argv[]) {
 
   start_server(port, droppc, root_folder);
 
-  // Free memory for global variables
+  // free memory for global vars
   free(outfile_path);
   free(outfile_name);
   free(pktsn);
