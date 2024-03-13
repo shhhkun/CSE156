@@ -7,13 +7,14 @@ OBJECTS  = $(SOURCES:$(SRCDIR)/%.c=$(BINDIR)/%.o)
 
 CC       = clang
 CFLAGS   = -Wall -Wpedantic -Werror -Wextra
+LDFLAGS  = -pthread
 
 .PHONY: all clean format
 
 all: $(EXECBIN)
 
 $(EXECBIN): $(OBJECTS)
-	$(CC) -o $@ $^
+	$(CC) -o $@ $^ $(LDFLAGS)
 
 $(BINDIR)/%.o: $(SRCDIR)/%.c | $(BINDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
