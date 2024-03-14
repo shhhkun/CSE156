@@ -168,7 +168,6 @@ void send_response(int client_sock, const char *status, const char *headers,
   send(client_sock, response, strlen(response), 0);
 }
 
-// Function to log the request
 void log_request(const struct sockaddr_in *dest_addr, const char *method,
                  const char *uri, const char *version, int status_code,
                  ssize_t bytes_received) {
@@ -176,10 +175,23 @@ void log_request(const struct sockaddr_in *dest_addr, const char *method,
   struct tm *tm_info = localtime(&now);
   char time_str[64];
   strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%S", tm_info);
+
+  char ip_str[INET_ADDRSTRLEN]; // Buffer to hold IP address string
+
+  // If dest_addr is not NULL, get the IP address string
+  if (dest_addr != NULL) {
+    inet_ntop(AF_INET, &(dest_addr->sin_addr), ip_str, INET_ADDRSTRLEN);
+  } else {
+    // If dest_addr is NULL, set IP address string to "Unknown"
+    strcpy(ip_str, "Unknown");
+  }
+
+  // Create log entry
   char log_entry[BUFFER_SIZE];
   snprintf(log_entry, sizeof(log_entry), "%s %s \"%s %s %s\" %d %zd\n",
-           time_str, inet_ntoa(dest_addr->sin_addr), method, uri, version,
-           status_code, bytes_received);
+           time_str, ip_str, method, uri, version, status_code, bytes_received);
+
+  // Write log entry to file
   FILE *access_log = fopen(access_log_file, "a");
   if (access_log != NULL) {
     fprintf(access_log, "%s", log_entry);
@@ -364,6 +376,14 @@ int main(int argc, char *argv[]) {
   // 502 Bad Gateway; proxy is unable to resolve domain name
   // 504 Gateway Timeout; if has IP address of server but unable to connect
   // (timeout)
+
+  // 3/14/2024
+  // todays tasks:
+  // make document
+  // make sure all error cases
+  // rename vars
+  // rename errors
+  // add more error checking (e.g. port ranges)
   close(server_sock);
   return 0;
 }
