@@ -42,7 +42,7 @@ void load_forbidden_sites() {
     return;
   }
 
-  //printf("Loading forbidden sites from file: %s\n", forbidden_sites_file);
+  printf("Loading forbidden sites from file: %s\n", forbidden_sites_file);
 
   char **new_forbidden_sites = NULL;
   int new_num_forbidden_sites = 0;
@@ -54,7 +54,7 @@ void load_forbidden_sites() {
     num_lines++;
   }
 
-  // printf("Number of lines in the file: %d\n", num_lines);
+  printf("Number of lines in the file: %d\n", num_lines);
 
   fseek(file, 0, SEEK_SET); // reset pointer to start of file
 
@@ -66,7 +66,7 @@ void load_forbidden_sites() {
     return;
   }
 
-  //printf("Memory allocated for new forbidden_sites array\n");
+  printf("Memory allocated for new forbidden_sites array\n");
 
   int i = 0;
   while (fgets(buffer, sizeof(buffer), file) != NULL) {
@@ -76,14 +76,14 @@ void load_forbidden_sites() {
       buffer[len - 1] = '\0';
     }
     new_forbidden_sites[i] = strdup(buffer);
-    //printf("Loaded forbidden site: %s\n", new_forbidden_sites[i]);
+    printf("Loaded forbidden site: %s\n", new_forbidden_sites[i]);
     i++;
   }
 
   new_num_forbidden_sites = num_lines;
   fclose(file);
   
-  //printf("New forbidden sites loaded successfully\n");
+  printf("New forbidden sites loaded successfully\n");
 
   // free memory of old forbidden sites array
   for (i = 0; i < num_forbidden_sites; i++) {
@@ -108,55 +108,62 @@ void handle_sigint(int sig) {
 }
 
 int is_forbidden(const char *hostname_or_ip) {
-  for (int i = 0; i < num_forbidden_sites; i++) { // check if forbidden
+  printf("hostname_or_ip: %s\n", hostname_or_ip);
+
+  // Check if the provided hostname or IP is in the forbidden array
+  for (int i = 0; i < num_forbidden_sites; i++) {
     if (strstr(hostname_or_ip, forbidden_sites[i]) != NULL) {
-      exit(1);
+      return 1; // Forbidden
     }
   }
-  return 0; // host/ip not forbidden
+
+  return 0; // Not forbidden
 }
 
-int parse_http_request(const char *request, char *hostname, char *path,
-                       int *port) {
-  char method[10], url[2048], version[10];
+int parse_http_request(const char *request, char *hostname, char *ip, char *path, int *port) {
+    char method[10], url[2048], version[10];
 
-  if (sscanf(request, "%s %s %s", method, url, version) !=
-      3) { // if invalid format (missing info)
-    return -1;
-  }
+    if (sscanf(request, "%s %s %s", method, url, version) != 3) { // if invalid format (missing info)
+        return -1;
+    }
 
-  if (strcmp(method, "GET") != 0 &&
-      strcmp(method, "HEAD") != 0) { // method not implemented (501)
-    return -1;
-  }
+    if (strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0) { // method not implemented (501)
+        return -1;
+    }
 
-  // parse URL to get hostname, path, and port
-  char *host_start = strstr(url, "//");
-  if (host_start == NULL) {
-    return -1;
-  }
-  host_start += 2; // move pointer past '//'
+    // Find the position of the double slash "//" in the URL
+    char *host_start = strstr(url, "//");
+    if (host_start == NULL) {
+        return -1; // Invalid URL format
+    }
+    host_start += 2; // move pointer past '//'
 
-  char *host_end = strchr(host_start, '/');
-  if (host_end == NULL) {
-    return -1;
-  }
-  int len = host_end - host_start;
-  strncpy(hostname, host_start, len);
-  hostname[len] = '\0';
+    // Find the position of the first slash after the proxy address (if present)
+    char *proxy_end = strchr(host_start, '/');
+    if (proxy_end == NULL) {
+        return -1; // Invalid URL format
+    }
 
-  // retrieve port (if part of URL)
-  char *port_start = strchr(hostname, ':');
-  if (port_start != NULL) {
-    *port = atoi(port_start + 1);
-    *port_start = '\0';
-  } else {
-    *port = 80; // default port
-  }
+    // Copy the hostname from the URL after the proxy address
+    int len = proxy_end - host_start;
+    strncpy(hostname, host_start, len);
+    hostname[len] = '\0';
 
-  strcpy(path, host_end); // copy host path
+    // Retrieve port (if part of URL)
+    char *port_start = strchr(hostname, ':');
+    if (port_start != NULL) {
+        *port = atoi(port_start + 1);
+        *port_start = '\0';
+    } else {
+        *port = 80; // default port
+    }
 
-  return 0;
+    // Copy the hostname to the IP address for now, as we'll resolve it later
+    strcpy(ip, hostname);
+
+    strcpy(path, proxy_end); // copy host path
+
+    return 0;
 }
 
 void send_response(int client_sock, const char *status, const char *headers,
@@ -208,18 +215,25 @@ void *handle_client(void *arg) {
   recv(client_sock, request_buffer, sizeof(request_buffer), 0);
 
   // parse incoming HTTP request
-  char hostname[2048], uri[2048];
+  char hostname[2048], uri[2048], ip[INET_ADDRSTRLEN]; // Declare 'ip' here
   int port;
-  if (parse_http_request(request_buffer, hostname, uri, &port) != 0) {
-    send_response(client_sock, "HTTP/1.1 400 Bad Request", "", "");
-    log_request(NULL, "GET", uri, "HTTP/1.1", 400, -1);
+  if (parse_http_request(request_buffer, hostname, ip, uri, &port) != 0) {
+    if (strcmp(hostname, "GET") != 0 && strcmp(hostname, "HEAD") != 0) {
+      send_response(client_sock, "HTTP/1.1 501 Not Implemented", "", "");
+      log_request(NULL, "GET", uri, "HTTP/1.1", 501, -1);
+    } else {
+      send_response(client_sock, "HTTP/1.1 400 Bad Request", "", "");
+      log_request(NULL, "GET", uri, "HTTP/1.1", 400, -1);
+    }
     close(client_sock);
     return NULL;
   }
 
   // check if hostname or IP is in forbidden array
   pthread_mutex_lock(&mutex_forbidden_sites);
-  if (is_forbidden(hostname)) {
+  printf("hostname: %s\n", hostname); //
+  printf("ip: %s\n", ip); //
+  if (is_forbidden(hostname) || is_forbidden(ip)) { // Also check for 'ip'
     pthread_mutex_unlock(&mutex_forbidden_sites);
     send_response(client_sock, "HTTP/1.1 403 Forbidden", "", "");
     log_request(NULL, "GET", uri, "HTTP/1.1", 403, -1);
@@ -305,11 +319,11 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  signal(SIGINT, handle_sigint); // SIGINT handler
-
   int listen_port = atoi(argv[1]);
   forbidden_sites_file = argv[2];
   access_log_file = argv[3];
+  
+  signal(SIGINT, handle_sigint); // SIGINT handler
 
   validport(listen_port); // check if port is within valid range
 
@@ -320,7 +334,6 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Socket creation failed\n");
     exit(1);
   }
-
   struct sockaddr_in server_addr;
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
@@ -369,10 +382,6 @@ int main(int argc, char *argv[]) {
   // 502 Bad Gateway; proxy is unable to resolve domain name
   // 504 Gateway Timeout; if has IP address of server but unable to connect
   // (timeout)
-
-  // 3/14/2024
-  // todays tasks:
-  // make document
   close(server_sock);
   return 0;
 }
